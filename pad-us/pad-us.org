@@ -1,0 +1,89 @@
+
+#+PROPERTY: session *R*
+#+PROPERTY: cache no
+
+#+NAME: init
+#+BEGIN_SRC R :results silent
+  library( ascii)
+  options( asciiType= "org")
+  library( rgdal)
+  library( foreign)
+#+END_SRC
+
+* differentiate four regions
+  1. cUSA
+  2. Alaska
+  3. Caribbean
+  4. Pacific
+
+
+#+NAME: regions
+#+BEGIN_SRC R :results silent
+  padus <- read.dbf( "PADUS1_2_Shapfile/PADUS1_2_SHP.dbf")
+  
+  states <- unique( padus[ , c( "State_Nm", "StateNm")])
+  states <- states[ order( states$State_Nm),]
+  states <- within( states, {
+    region <- factor( rep( "cUSA", nrow(states)),
+                     levels= c( "cUSA", "Alaska", "Caribbean", "Pacific"))
+    region[ states$StateNm == 'Alaska' ] <- "Alaska"
+    region[ states$StateNm == 'Hawaii' ] <- "Pacific"
+    region[ as.character( states$State_Nm) >= '60' ] <- "Pacific"
+    region[ states$State_Nm %in% c( '72', '78') ] <- "Caribbean"
+  })
+  
+  sqlWhere <- with( states,
+                   by( State_Nm, region,
+                      function( fips) paste( sprintf( "'%s'", fips),
+                                            collapse=",")))
+#+END_SRC
+
+#+NAME: states
+#+BEGIN_SRC R :results output org
+  ascii( states)
+#+END_SRC
+
+* create regional shapefiles
+#+NAME: ogr2ogr
+#+BEGIN_SRC R :results output verbatim
+  cat( "", file= "ogr2ogr.sh")
+  for( region in levels( states$region)) {
+    ogr2ogr <- paste( "ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile",
+                     sprintf( "-nln PADUS1_2_%s -where \"State_Nm IN (%s)\" PADUS1_2_SHP",
+                             region, sqlWhere[[ region]]))
+    cat( ogr2ogr, "\n")
+    ## system( ogr2ogr)
+    cat( ogr2ogr, "\n", file= "ogr2ogr.sh", append= TRUE)
+  }
+#+END_SRC
+
+
+#+results[52ba8508b136001e99a288f81afb47d5bb8100fa]: ogr2ogr
+:  ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_cUSA -where "State_Nm IN ('01','04','05','06','08','09','10','11','12','13','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','44','45','46','47','48','49','50','51','53','54','55','56')" PADUS1_2_SHP 
+: ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Alaska -where "State_Nm IN ('02')" PADUS1_2_SHP 
+: ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Caribbean -where "State_Nm IN ('72','78')" PADUS1_2_SHP 
+: ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Pacific -where "State_Nm IN ('15','60','64','66','68','69','70','74')" PADUS1_2_SHP
+
+
+* rasterize GAP_Sts variable for each region
+#+NAME: gdal_rasterize
+#+BEGIN_SRC R :results output verbatim
+  cat( "", file= "gdal_rasterize.sh")
+  for( region in levels( states$region)) {
+      gdal <- paste( "gdal_rasterize -ot Byte -tr 30 30 -tap -at -a GAP_Sts",
+                    "-a_nodata 255 -co \"COMPRESS=LZW\"",
+                    sprintf( "-l PADUS1_2_%s PADUS1_2_regions", region),
+                    sprintf( "PADUS1_2_regions/PADUS1_2_%s_GAP.tif", region))
+      cat( gdal, "\n")
+      ## system( gdal)
+      cat( gdal, "\n", file= "gdal_rasterize.sh", append= TRUE)
+  }
+#+END_SRC
+
+#+results[0bb5af5180ffc0f17c4ed06cb485466a57153cd1]: gdal_rasterize
+:  gdal_rasterize -ot Byte -tr 30 30 -tap -at -a GAP_Sts -a_nodata 255 -co "COMPRESS=LZW" -l PADUS1_2_cUSA PADUS1_2_regions PADUS1_2_regions/PADUS1_2_cUSA_GAP.tif 
+: gdal_rasterize -ot Byte -tr 30 30 -tap -at -a GAP_Sts -a_nodata 255 -co "COMPRESS=LZW" -l PADUS1_2_Alaska PADUS1_2_regions PADUS1_2_regions/PADUS1_2_Alaska_GAP.tif 
+: gdal_rasterize -ot Byte -tr 30 30 -tap -at -a GAP_Sts -a_nodata 255 -co "COMPRESS=LZW" -l PADUS1_2_Caribbean PADUS1_2_regions PADUS1_2_regions/PADUS1_2_Caribbean_GAP.tif 
+: gdal_rasterize -ot Byte -tr 30 30 -tap -at -a GAP_Sts -a_nodata 255 -co "COMPRESS=LZW" -l PADUS1_2_Pacific PADUS1_2_regions PADUS1_2_regions/PADUS1_2_Pacific_GAP.tif
+
+* 
