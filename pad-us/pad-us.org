@@ -13,8 +13,8 @@
 * differentiate four regions
   1. cUSA
   2. Alaska
-  3. Caribbean
-  4. Pacific
+  3. Puerto Rico
+  4. Hawaii
 
 
 #+NAME: regions
@@ -25,11 +25,11 @@
   states <- states[ order( states$State_Nm),]
   states <- within( states, {
     region <- factor( rep( "cUSA", nrow(states)),
-                     levels= c( "cUSA", "Alaska", "Caribbean", "Pacific"))
-    region[ states$StateNm == 'Alaska' ] <- "Alaska"
-    region[ states$StateNm == 'Hawaii' ] <- "Pacific"
-    region[ as.character( states$State_Nm) >= '60' ] <- "Pacific"
-    region[ states$State_Nm %in% c( '72', '78') ] <- "Caribbean"
+                     levels= c( "cUSA", "Alaska", "PuertoRico", "Hawaii"))
+    region[ states$StateNm == "Alaska" ] <- "Alaska"
+    region[ states$StateNm == "Hawaii" ] <- "Hawaii"
+    region[ as.character( states$State_Nm) >= '60' ] <- NA
+    region[ states$StateNm == "Puerto Rico" ] <- "PuertoRico"
   })
   
   sqlWhere <- with( states,
