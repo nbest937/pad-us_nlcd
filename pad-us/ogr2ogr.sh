@@ -1,4 +1,4 @@
-ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_cUSA -where "State_Nm IN ('01','04','05','06','08','09','10','11','12','13','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','44','45','46','47','48','49','50','51','53','54','55','56')" PADUS1_2_SHP 
-ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Alaska -where "State_Nm IN ('02')" PADUS1_2_SHP 
-ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Caribbean -where "State_Nm IN ('72','78')" PADUS1_2_SHP 
-ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -nln PADUS1_2_Pacific -where "State_Nm IN ('15','60','64','66','68','69','70','74')" PADUS1_2_SHP 
+ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -spat -2493045 177285 2342655 3310005 -nln PADUS1_2_cUSA -where "State_Nm IN ('01','04','05','06','08','09','10','11','12','13','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','44','45','46','47','48','49','50','51','53','54','55','56')" PADUS1_2_SHP 
+ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -spat -2232345 344805 1494735 2380125 -nln PADUS1_2_Alaska -where "State_Nm IN ('02')" PADUS1_2_SHP 
+ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -spat 3092415 -78975 3345225 59415 -nln PADUS1_2_PuertoRico -where "State_Nm IN ('72')" PADUS1_2_SHP 
+ogr2ogr -overwrite PADUS1_2_regions PADUS1_2_Shapfile -spat -345945 1753875 237225 2132415 -nln PADUS1_2_Hawaii -where "State_Nm IN ('15')" PADUS1_2_SHP 
