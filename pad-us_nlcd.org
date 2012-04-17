@@ -1,0 +1,184 @@
+#+TITLE:     pad-us_nlcd.org
+#+AUTHOR:    Neil Best
+#+EMAIL:     nbest@ci.uchicago.edu
+#+DATE:      2012-04-13 Fri
+#+DESCRIPTION:
+#+KEYWORDS:
+#+LANGUAGE:  en
+#+OPTIONS:   H:3 num:t toc:t \n:nil @:t ::t |:t ^:t -:t f:t *:t <:t
+#+OPTIONS:   TeX:t LaTeX:t skip:nil d:nil todo:t pri:nil tags:not-in-toc
+#+INFOJS_OPT: view:nil toc:nil ltoc:t mouse:underline buttons:0 path:http://orgmode.org/org-info.js
+#+EXPORT_SELECT_TAGS: export
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+LINK_UP:   
+#+LINK_HOME: 
+#+XSLT:
+
+#+PROPERTY session *R:2*
+
+* process Puerto Rico to work out steps
+
+#+NAME: grid
+#+BEGIN_SRC R
+  ## library( raster)
+  library( raster, lib.loc="~/src/raster/lib/")
+  setOptions( progress= "text")
+  setOptions( maxmemory= 1e+06)
+  
+  overwriteRasters <- FALSE
+  
+  pr <- raster( "nlcd2006/pr_landcover_wimperv_10-28-08_se5.img")
+  NAvalue( pr) <- 0
+  pr <- setMinMax( pr)
+  
+  prGrid <- try( raster( "prGrid.tif"), silent= TRUE)
+  if( inherits( prGrid, "try-error") || overwriteRasters) {             
+    prGrid <- raster( pr)
+    prGrid[] <- seq( 1, ncell( prGrid))
+    prGrid <-
+      mask( prGrid, pr,
+           filename= "prGrid.tif",
+           overwrite= TRUE,
+           progress= "text")
+  }
+  
+  world <- raster()
+  res( world) <- 5/60
+  
+  gridProjFunc <- function( cell) {
+    cellFromXY( world,
+               project( xyFromCell( prGrid, cell),
+                       projection( prGrid),
+                       inv= TRUE))
+  }
+  
+  prWorld <- try( raster( "world_5min_PuertoRico.tif"), silent= TRUE)
+  if( inherits( prWorld, "try-error") || overwriteRasters) {             
+    prWorld <-
+      calc( prGrid, gridProjFunc,
+           filename= "world_5min_PuertoRico.tif",
+           datatype= "INT4U",
+           overwrite= TRUE,
+           progress= "text")
+  }
+  
+  prGap <- raster( "pad-us/PADUS1_2_regions/PADUS1_2_PuertoRico_GAP.tif")
+  prGap <- setMinMax( prGap)
+  NAvalue( prGap) <- 255
+  
+  setGapZero <- function( gap, grid) {
+    ifelse( is.na( gap) & !is.na( grid), 0, gap)
+  }
+  
+  prGap <- overlay( prGap, prGrid, fun= setGapZero,
+                   filename= "prGap.tif", datatype= "INT1U", progress= "text", overwrite= TRUE)
+  NAvalue( prGap) <- 255
+  
+  
+  prStack <- stack(prWorld, pr, prGap)
+  layerNames( prStack) <- c( "grid", "nlcd", "gap")
+  
+  ct <- crosstab( prStack, useNA= "always", long= TRUE, responseName= "n", progress="text")
+#+END_SRC
+
+* extend PR example for batch processing
+
+#+BEGIN_SRC R
+  library( plyr)
+  library( stringr)
+  
+  regions <-   c( "Alaska", "Hawaii", "cUSA")
+  nlcdFiles <-
+    list.files( "nlcd2006",
+               patt="^(ak|hi|nlcd2006).*?img$",
+               full.names= TRUE)
+  names( nlcdFiles) <- regions
+  
+  nlcdRasters <-
+    llply( regions,
+          function ( region) {
+            r <- raster( nlcdFiles[[ region]])
+            NAvalue( r) <- 0
+            ## r <- setMinMax( r)
+            layerNames( r) <- region
+            r
+          })
+  
+  writeCellNums <- function( r, filename="", ...) {
+    out <- raster( r)
+    dataType( out) <- "INT4U"
+    if( inherits( try( out[] <- seq( 1, ncell( out)),
+                      silent= TRUE),
+                 "try-error")) {
+      filename <- trim( filename)
+      if( filename == "") {
+        filename <- rasterTmpFile()
+      }
+      out <- writeStart( out, filename, ...)
+      bs <- blockSize( out)
+      pb <- pbCreate( bs$n)
+      for( i in 1:bs$n) {
+        v <- seq( from= ( bs$row[ i] - 1) * ncol( out) + 1,
+                 length.out= bs$nrows[ i] * ncol( out))
+        writeValues( out, v, bs$row[ i])
+        pbStep( pb, i)
+      }
+      out <- writeStop( out)
+      pbClose( pb)
+    }
+    return( out)
+  }
+  
+  
+  aeaGrids <-
+    llply( nlcdRasters,
+          function ( r) {
+            ## grid <- raster( r)
+            ## grid[] <- seq( 1, ncell( grid))
+            cat( "writeCellNums()", layerNames( r), "\n")
+            grid <- writeCellNums( r)
+            fn <- sprintf( "aeaGrid%s.tif", layerNames( r))
+            cat( "mask()", fn, "\n")
+            out <- mask( grid, r,
+                        filename= fn,
+                        overwrite= TRUE)
+            layerNames( out) <- layerNames( r)
+          })
+  
+  l_ply( names( aeaGrids),
+        function( region) {
+          r <- aeaGrids[[ region]]
+          layerNames(r) <- region
+        })
+  
+  world5minGrids <-
+    llply( aeaGrids
+  
+  gapFiles <-
+    list.files( "pad-us/PADUS1_2_regions/",
+               patt= "^PADUS1_2_.*?tif$")
+  names( gapFiles) <-
+    str_match( gapFiles,
+              "^PADUS1_2_([^_]+)_GAP\\.tif$")[, 2]
+  
+  gapRasters <-
+    llply( names( gapFiles),
+          function ( region) {
+            r <- raster( gapFiles[[ region]])
+            NAvalue( r) <- 255
+            r <- setMinMax( r)
+            layerNames( r) <- region
+            r
+  })
+  
+  gapOverlays <-
+    mapply( gapRasters, aeaGrids,
+           FUN= function ( gap, grid) {
+             overlay( gap, grid,
+                     fun= setGapZero,
+                     filename= sprintf( "gap%s.tif", layerNames( gap)),
+                     datatype= "INT1U",
+                     progress= "text",
+                     overwrite= TRUE)
+           
+#+END_SRC
