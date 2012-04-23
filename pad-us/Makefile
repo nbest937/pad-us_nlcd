@@ -1,7 +1,7 @@
 all: wget unzip ogr2ogr gdal
 
 gdal: gdal_rasterize.sh
-	chmod u+x gdal_rasterize.sh
+	chmod u+x gdal_rasterize.sh	
 	./gdal_rasterize.sh
 
 ogr2ogr: ogr2ogr.sh

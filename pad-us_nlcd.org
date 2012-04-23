@@ -16,16 +16,36 @@
 
 #+PROPERTY session *R:2*
 
-* process Puerto Rico to work out steps
 
-#+NAME: grid
+* initialize the session
+
+#+NAME: init
 #+BEGIN_SRC R
   ## library( raster)
   library( raster, lib.loc="~/src/raster/lib/")
   setOptions( progress= "text")
   setOptions( maxmemory= 1e+06)
+  library( plyr)
+  library( stringr)
   
   overwriteRasters <- FALSE
+  
+  setGapZero <- function( gap, grid) {
+    ifelse( is.na( gap) & !is.na( grid), 0, gap)
+  }
+  
+  gridProjFunc <- function( cell) {
+    cellFromXY( world,
+               project( xyFromCell( prGrid, cell),
+                       projection( prGrid),
+                       inv= TRUE))
+  }
+  
+#+END_SRC
+* process Puerto Rico to work out steps
+
+#+NAME: grid
+#+BEGIN_SRC R
   
   pr <- raster( "nlcd2006/pr_landcover_wimperv_10-28-08_se5.img")
   NAvalue( pr) <- 0
@@ -45,12 +65,6 @@
   world <- raster()
   res( world) <- 5/60
   
-  gridProjFunc <- function( cell) {
-    cellFromXY( world,
-               project( xyFromCell( prGrid, cell),
-                       projection( prGrid),
-                       inv= TRUE))
-  }
   
   prWorld <- try( raster( "world_5min_PuertoRico.tif"), silent= TRUE)
   if( inherits( prWorld, "try-error") || overwriteRasters) {             
@@ -65,11 +79,7 @@
   prGap <- raster( "pad-us/PADUS1_2_regions/PADUS1_2_PuertoRico_GAP.tif")
   prGap <- setMinMax( prGap)
   NAvalue( prGap) <- 255
-  
-  setGapZero <- function( gap, grid) {
-    ifelse( is.na( gap) & !is.na( grid), 0, gap)
-  }
-  
+    
   prGap <- overlay( prGap, prGrid, fun= setGapZero,
                    filename= "prGap.tif", datatype= "INT1U", progress= "text", overwrite= TRUE)
   NAvalue( prGap) <- 255
@@ -82,103 +92,166 @@
 #+END_SRC
 
 * extend PR example for batch processing
-
+** load NLCD rasters
 #+BEGIN_SRC R
-  library( plyr)
-  library( stringr)
   
-  regions <-   c( "Alaska", "Hawaii", "cUSA")
-  nlcdFiles <-
-    list.files( "nlcd2006",
-               patt="^(ak|hi|nlcd2006).*?img$",
-               full.names= TRUE)
-  names( nlcdFiles) <- regions
+  ## regions <- c( "Alaska", "Hawaii", "CUSA", "PuertoRico")
+  ## names( regions) <- regions
+  ## nlcdFiles <-
+  ##   list.files( "nlcd2006",
+  ##              patt="^(ak|hi|nlcd2006|pr).*?img$",
+  ##              full.names= TRUE)
+  ## names( nlcdFiles) <- regions
   
+  ## regions <- regions[ c( 4, 2, 1, 3)]
+  
+  ## nlcdRasters <-
+  ##   llply( regions,
+  ##         function ( region) {
+  ##           r <- raster( nlcdFiles[[ region]])
+  ##           NAvalue( r) <- 0
+  ##           ## r <- setMinMax( r)
+  ##           layerNames( r) <- region
+  ##           r
+  ##         })
+  
+  regionPatterns <-
+    list( PuertoRico= "pr.*?img$",
+          Hawaii= "hi.*?img$",
+          Alaska= "ak.*?img$",
+          cUSA= "nlcd2006.*?img$")
+  
+  regions <- names( regionPatterns)
+  names( regions) <- names( regionPatterns)
+          
   nlcdRasters <-
-    llply( regions,
-          function ( region) {
-            r <- raster( nlcdFiles[[ region]])
+    llply( regionPatterns,
+          function( patt) {
+            r <- raster( list.files( "nlcd2006",
+                                    patt= patt,
+                                    full.names= TRUE))
             NAvalue( r) <- 0
-            ## r <- setMinMax( r)
-            layerNames( r) <- region
             r
           })
   
-  writeCellNums <- function( r, filename="", ...) {
-    out <- raster( r)
-    dataType( out) <- "INT4U"
-    if( inherits( try( out[] <- seq( 1, ncell( out)),
-                      silent= TRUE),
-                 "try-error")) {
-      filename <- trim( filename)
-      if( filename == "") {
-        filename <- rasterTmpFile()
-      }
-      out <- writeStart( out, filename, ...)
-      bs <- blockSize( out)
-      pb <- pbCreate( bs$n)
-      for( i in 1:bs$n) {
-        v <- seq( from= ( bs$row[ i] - 1) * ncol( out) + 1,
-                 length.out= bs$nrows[ i] * ncol( out))
-        writeValues( out, v, bs$row[ i])
-        pbStep( pb, i)
-      }
-      out <- writeStop( out)
-      pbClose( pb)
-    }
-    return( out)
-  }
+#+END_SRC
+
+** calculate 5' cell ID for each 30m pixel
   
-  
-  aeaGrids <-
-    llply( nlcdRasters,
-          function ( r) {
-            ## grid <- raster( r)
-            ## grid[] <- seq( 1, ncell( grid))
-            cat( "writeCellNums()", layerNames( r), "\n")
-            grid <- writeCellNums( r)
-            fn <- sprintf( "aeaGrid%s.tif", layerNames( r))
-            cat( "mask()", fn, "\n")
-            out <- mask( grid, r,
-                        filename= fn,
-                        overwrite= TRUE)
-            layerNames( out) <- layerNames( r)
-          })
-  
-  l_ply( names( aeaGrids),
-        function( region) {
-          r <- aeaGrids[[ region]]
-          layerNames(r) <- region
-        })
-  
-  world5minGrids <-
-    llply( aeaGrids
-  
+#+BEGIN_SRC R
+  dataType(world) <- "INT4U"
+  world[] <- seq( 1, ncell( world))
+  world <- writeRaster( world, "world5min.tif",
+                       datatype= "INT4U",
+                       overwrite= TRUE)*
+#+END_SRC
+
+#+BEGIN_SRC sh
+  make grid
+#+END_SRC
+
+#+BEGIN_SRC R
+
+#+END_SRC
+
+** add zeroes to GAP data for unprotected land and coastal areas
+
+#+BEGIN_SRC R :session *R:2*
   gapFiles <-
     list.files( "pad-us/PADUS1_2_regions/",
-               patt= "^PADUS1_2_.*?tif$")
+               patt= "^PADUS1_2_.*?tif$",
+               full.names= TRUE)
   names( gapFiles) <-
     str_match( gapFiles,
-              "^PADUS1_2_([^_]+)_GAP\\.tif$")[, 2]
+              "PADUS1_2_([^_]+)_GAP\\.tif$")[, 2]
   
   gapRasters <-
-    llply( names( gapFiles),
+    llply( names( regionPatterns),
           function ( region) {
             r <- raster( gapFiles[[ region]])
             NAvalue( r) <- 255
-            r <- setMinMax( r)
+            ## r <- setMinMax( r)
             layerNames( r) <- region
             r
   })
+  names( gapRasters) <- names( regionPatterns)
+  
+  gapOverlayFunc <-
+    function ( gap, nlcd) {
+      fn <- sprintf( "gap%s.grd", layerNames( gap))
+      if( overwriteRasters | !file.exists( fn)) {
+        overlay( gap, nlcd,
+                fun= setGapZero,
+                filename= fn,
+                datatype= "INT1U",
+                overwrite= TRUE)
+      } else try( raster( fn), silent= TRUE)
+    }
+  
+  ## prOverlay <- gapOverlayFunc( gapRasters[[ "PuertoRico"]],
+  ##                             nlcdRasters[[ "PuertoRico"]])
   
   gapOverlays <-
-    mapply( gapRasters, aeaGrids,
-           FUN= function ( gap, grid) {
-             overlay( gap, grid,
-                     fun= setGapZero,
-                     filename= sprintf( "gap%s.tif", layerNames( gap)),
-                     datatype= "INT1U",
-                     progress= "text",
-                     overwrite= TRUE)
-           
+    mapply( gapRasters, nlcdRasters,
+           FUN= gapOverlayFunc) 
+  
+  gapOverlays <-
+    llply( regions,
+          function( region) {
+            gapOverlayFunc( gapRasters[[ region]],
+                           nlcdRasters[[ region]])
+          })
+  
+#+END_SRC
+
+
+** create stacks and tabulate
+
+#+NAME: stacks
+#+BEGIN_SRC R
+  prStack <- stack(prWorld, pr, prGap)
+  layerNames( prStack) <- c( "grid", "nlcd", "gap")
+  
+  prStack <- stack( raster( "aeaGrid5minPuertoRico.img"),
+                   nlcdRasters[[ "PuertoRico"]],
+                   prOverlay)
+  
+  prLowRes <- raster( prStack)
+  res( prLowRes) <- 3000
+  
+  prStackSmall <- resample( prStack, prLowRes, method= "ngb")
+  layerNames( prStackSmall) <- c( "grid", "nlcd", "gap")
+  
+  prCt <- crosstab( prStackSmall, long= TRUE, responseName= "n")
+  
+  prCt <- crosstab( prStack, long= TRUE)
+  
+  
+  aeaGridFunc <-
+    function( region) {
+      raster( sprintf( "aeaGrid5min%s.img", region))
+    }
+    
+  aeaGrids <- llply( regions, aeaGridFunc)
+                    
+  gapStackFunc <-
+    function( region) {
+      s <- stack( aeaGrids[[ region]],
+                 nlcdRasters[[ region]],
+                 gapOverlays[[ region]])
+      layerNames( s) <- c( "grid", "nlcd", "gap")
+      s
+    }
+                 
+  gapStacks <- llply( regions, gapStackFunc)
+          
+  writeCrosstabs <-
+    function( region) {
+      fn <- sprintf( "pad-us_nlcd_%s.csv", region)
+      ct <- crosstab( gapStacks[[ region]])
+      write.csv( ct, row.names= FALSE, file= fn)
+      fn
+    }
+  
+  ctFiles <- llply( regions, writeCrosstabs)
 #+END_SRC
