@@ -1,0 +1,13 @@
+*.dbf
+*.prj
+*.shp*
+*.shx
+*.zip
+*.ige
+*.img
+*.gri
+*.grd
+*.tif*
+*.csv
+.DS_Store
+.Rhistory
