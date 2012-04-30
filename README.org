@@ -1,0 +1,30 @@
+* PAD-US_NLCD 
+Combine PAD-US and NLCD databases and aggregate to 5 arc-minutes to
+characterize protected vs. unprotected lands by cover type.
+
+** Dataset Description
+National Land Cover Database 2006 (NLCD2006) is described [[http://www.mrlc.gov/nlcd2006.php][here]].
+National Land Cover Database 2001 (NLCD2001) is described [[http://www.mrlc.gov/nlcd2001.php][here]].
+
+*** TODO Add preferred citations for NLCD.
+*** TODO Create pad-us/README.org and point to it and its sub-module.
+
+** Codeset Description
+This repository can be found [[https://github.com/nbest937/pad-us_nlcd][here]] on [[https://github.com][GitHub]].
+
+*** TODO Add more detail to codeset description.
+
+This repository is an example of a Blox component.  Blox is a modular
+source code management, data management and scientific workflow
+concept under development at the University of Chicago's Computation
+Institute.  Blox currently relies on the Git distributed version
+control system and GNU Make, but could conceivably be implemented
+using other source code management systems and dependency tracking
+utilities.
+
+** Copyrights
+
+The codeset was developed by Neil Best at the University of Chicago’s
+Computation Institute in support of ongoing research at the Center for
+Robust Decision Making on Climate and Energy Policy (RDECEP).
+Attribution is appreciated.
