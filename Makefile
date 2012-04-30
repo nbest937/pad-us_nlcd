@@ -11,3 +11,18 @@ pr: world5min.tif
 
 hi: world5min.tif
 	gdalwarp -overwrite -of HFA -t_srs "+proj=aea +lat_1=8.000000000000002 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs" -te -345945 1753875 237225 2132415 -tr 30 30 -co "COMPRESSED=YES" world5min.tif aeaGrid5minHawaii.img
+
+grass: grassPuertoRico grassHawaii grassAlaska grasscUSA
+
+grassPuertoRico:
+	./grassPuertoRico.sh
+
+grassHawaii:
+	./grassHawaii.sh
+
+grassAlaska:
+	./grassAlaska.sh
+
+grasscUSA:
+	./grasscUSA.sh
+

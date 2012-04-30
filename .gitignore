@@ -1,5 +1,6 @@
 *.dbf
 *.prj
+*.qix
 *.shp*
 *.shx
 *.zip
@@ -11,3 +12,4 @@
 *.csv
 .DS_Store
 .Rhistory
+*~

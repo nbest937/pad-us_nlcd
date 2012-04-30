@@ -14,34 +14,24 @@
 #+LINK_HOME: 
 #+XSLT:
 
-#+PROPERTY session *R:2*
+#+PROPERTY: session *R*
+#+PROPERTY: results silent
 
+* TODO tangle out the R code and run it from the Makefile
 
 * initialize the session
-
 #+NAME: init
-#+BEGIN_SRC R
+#+BEGIN_SRC R 
   ## library( raster)
-  library( raster, lib.loc="~/src/raster/lib/")
+  library( raster, lib.loc="~/src/R/lib/")
   setOptions( progress= "text")
-  setOptions( maxmemory= 1e+06)
+  ## setOptions( maxmemory= 1e+06)
   library( plyr)
   library( stringr)
   
   overwriteRasters <- FALSE
-  
-  setGapZero <- function( gap, grid) {
-    ifelse( is.na( gap) & !is.na( grid), 0, gap)
-  }
-  
-  gridProjFunc <- function( cell) {
-    cellFromXY( world,
-               project( xyFromCell( prGrid, cell),
-                       projection( prGrid),
-                       inv= TRUE))
-  }
-  
 #+END_SRC
+
 * process Puerto Rico to work out steps
 
 #+NAME: grid
@@ -62,9 +52,12 @@
            progress= "text")
   }
   
-  world <- raster()
-  res( world) <- 5/60
-  
+  gridProjFunc <- function( cell) {
+    cellFromXY( world,
+               project( xyFromCell( prGrid, cell),
+                       projection( prGrid),
+                       inv= TRUE))
+  }  
   
   prWorld <- try( raster( "world_5min_PuertoRico.tif"), silent= TRUE)
   if( inherits( prWorld, "try-error") || overwriteRasters) {             
@@ -90,6 +83,8 @@
   
   ct <- crosstab( prStack, useNA= "always", long= TRUE, responseName= "n", progress="text")
 #+END_SRC
+
+#+results:
 
 * extend PR example for batch processing
 ** load NLCD rasters
@@ -136,23 +131,28 @@
   
 #+END_SRC
 
+#+results:
+   
 ** calculate 5' cell ID for each 30m pixel
-  
-#+BEGIN_SRC R
-  dataType(world) <- "INT4U"
-  world[] <- seq( 1, ncell( world))
+
+Write out a 5' raster in geographic projection where the value of each
+cell is its grid ID.  This will be reprojected into the cooridnate
+space of each PAD-US/NLCD stack.
+
+#+NAME: world  
+#+BEGIN_SRC R :session *R:2*
+  world <- raster()
+  res( world) <- 5/60
+  dataType( world) <- "INT4U"
+  world[ ] <- seq( 1, ncell( world))
   world <- writeRaster( world, "world5min.tif",
                        datatype= "INT4U",
-                       overwrite= TRUE)*
+                       overwrite= TRUE)
 #+END_SRC
 
-#+BEGIN_SRC sh
-  make grid
-#+END_SRC
-
-#+BEGIN_SRC R
-
-#+END_SRC
+*** TODO How did I write the gdal_rasterize command for the grid IDs?
+I must have done it by hand.  This should be tangled out and called in
+the Makefile.
 
 ** add zeroes to GAP data for unprotected land and coastal areas
 
@@ -176,6 +176,10 @@
   })
   names( gapRasters) <- names( regionPatterns)
   
+  setGapZero <- function( gap, grid) {
+    ifelse( is.na( gap) & !is.na( grid), 0, gap)
+  }
+
   gapOverlayFunc <-
     function ( gap, nlcd) {
       fn <- sprintf( "gap%s.grd", layerNames( gap))
@@ -188,12 +192,12 @@
       } else try( raster( fn), silent= TRUE)
     }
   
-  ## prOverlay <- gapOverlayFunc( gapRasters[[ "PuertoRico"]],
-  ##                             nlcdRasters[[ "PuertoRico"]])
+  prOverlay <- gapOverlayFunc( gapRasters[[ "PuertoRico"]],
+                              nlcdRasters[[ "PuertoRico"]])
   
-  gapOverlays <-
-    mapply( gapRasters, nlcdRasters,
-           FUN= gapOverlayFunc) 
+  ## gapOverlays <-
+  ##   mapply( gapRasters, nlcdRasters,
+  ##          FUN= gapOverlayFunc) 
   
   gapOverlays <-
     llply( regions,
@@ -204,27 +208,28 @@
   
 #+END_SRC
 
-
+#+results:
+   
 ** create stacks and tabulate
 
 #+NAME: stacks
 #+BEGIN_SRC R
-  prStack <- stack(prWorld, pr, prGap)
-  layerNames( prStack) <- c( "grid", "nlcd", "gap")
+  ## prStack <- stack(prWorld, pr, prGap)
+  ## layerNames( prStack) <- c( "grid", "nlcd", "gap")
   
-  prStack <- stack( raster( "aeaGrid5minPuertoRico.img"),
-                   nlcdRasters[[ "PuertoRico"]],
-                   prOverlay)
+  ## prStack <- stack( raster( "aeaGrid5minPuertoRico.img"),
+  ##                  nlcdRasters[[ "PuertoRico"]],
+  ##                  prOverlay)
   
-  prLowRes <- raster( prStack)
-  res( prLowRes) <- 3000
+  ## prLowRes <- raster( prStack)
+  ## res( prLowRes) <- 3000
   
-  prStackSmall <- resample( prStack, prLowRes, method= "ngb")
-  layerNames( prStackSmall) <- c( "grid", "nlcd", "gap")
+  ## prStackSmall <- resample( prStack, prLowRes, method= "ngb")
+  ## layerNames( prStackSmall) <- c( "grid", "nlcd", "gap")
   
-  prCt <- crosstab( prStackSmall, long= TRUE, responseName= "n")
+  ## prCt <- crosstab( prStackSmall, long= TRUE, responseName= "n")
   
-  prCt <- crosstab( prStack, long= TRUE)
+  ## prCt <- crosstab( prStack, long= TRUE)
   
   
   aeaGridFunc <-
@@ -255,3 +260,119 @@
   
   ctFiles <- llply( regions, writeCrosstabs)
 #+END_SRC
+
+#+results:
+
+** write out GRASS scripts
+
+#+NAME: grassPuertoRico
+#+BEGIN_SRC sh
+  ./create_location.sh aeaGrid5minPuertoRico.img PuertoRico grass
+  g.rename rast=aeaGrid5minPuertoRico.img,grid_5min
+  r.in.gdal input=nlcd2006/pr_landcover_wimperv_10-28-08_se5.img output=nlcd2006
+  r.in.gdal input=pad-us/PADUS1_2_regions/PADUS1_2_PuertoRico_GAP.tif output=gap
+  
+  r.mapcalc MASK="if( nlcd2006 > 0, 1, null())"
+  echo grid_5min,nlcd2006,gap,n > statsPuertoRico.csv
+  r.stats -c input=grid_5min,nlcd2006,gap fs=, >> statsPuertoRico.csv
+  r.mask -r
+  echo grid_5min,n > gridPuertoRico.csv
+  r.stats -c input=grid_5min fs=, >> gridPuertoRico.csv
+  
+#+END_SRC
+
+
+#+NAME: grassCreate( REGION="PuertoRico")
+#+BEGIN_SRC sh :session :noweb yes :results output code replace
+  # echo ./create_location.sh aeaGrid5min${REGION}.img ${REGION} grass
+  
+  cat <<'EOF'
+  # path to GRASS binaries and libraries:
+  export GISBASE=/usr/lib/grass64
+  export PATH=$PATH:$GISBASE/bin:$GISBASE/scripts
+  export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GISBASE/lib
+  
+  # use process ID (PID) as lock file number:
+  export GIS_LOCK=$$
+  
+  # path to GRASS settings file
+  export GISRC=./.grassrc6
+  EOF
+  
+  cat <<EOF
+  g.gisenv set=LOCATION_NAME=\$GIS_LOCK
+  eval \$(g.gisenv)
+  mkdir -p \$GISDBASE/\$GIS_LOCK
+  g.mapset -c mapset=temp
+  r.in.gdal in=aeaGrid5min${REGION}.img out=grid_5min location=${REGION}
+  # g.gisenv set=LOCATION_NAME=${REGION}
+  # g.gisenv set=MAPSET=PERMANENT
+  g.mapset mapset=PERMANENT location=${REGION}
+  rm -rf \$GISDBASE/\$GIS_LOCK/temp
+  # g.rename rast=aeaGrid5min${REGION}.img,grid_5min
+  r.in.gdal input=pad-us/PADUS1_2_regions/PADUS1_2_${REGION}_GAP.tif output=gap
+  EOF
+#+END_SRC
+  
+#+NAME: rInGdalNlcd( region= "PuertoRico")
+#+BEGIN_SRC R :results value verbatim replace
+  path <-
+    list.files( "nlcd2006",
+               patt= regionPatterns[[ region]],
+               full.names= TRUE)
+  sprintf( "r.in.gdal input=%s output=nlcd2006", path)
+#+END_SRC
+
+#+RESULTS: rInGdalNlcd
+: r.in.gdal input=nlcd2006/pr_landcover_wimperv_10-28-08_se5.img output=nlcd2006
+
+
+#+NAME: grassMapcalc( REGION= "PuertoRico")
+#+BEGIN_SRC sh :session :results output code replace
+  cat <<EOF 
+  r.mapcalc MASK="if( nlcd2006 > 0, 1, null())"
+  echo grid_5min,nlcd2006,gap,n > stats${REGION}.csv
+  r.stats -c input=grid_5min,nlcd2006,gap fs=, >> stats${REGION}.csv
+  r.mask -r
+  echo grid_5min,n > grid${REGION}.csv
+  r.stats -c input=grid_5min fs=, >> grid${REGION}.csv
+  EOF
+  
+  cat <<'EOF'
+  # run GRASS' cleanup routine
+  $GISBASE/etc/clean_temp
+  
+  # remove session tmp directory:
+  rm -rf /tmp/grass6-$USER-$GIS_LOCK
+  EOF
+#+END_SRC
+
+#+NAME: grassPuertoRico
+#+BEGIN_SRC sh :session :noweb yes :tangle grassPuertoRico.sh :shebang "#!/bin/bash -v"
+  <<grassCreate( "PuertoRico")>>
+  <<rInGdalNlcd( "PuertoRico")>>
+  <<grassMapcalc( "PuertoRico")>>
+#+END_SRC
+
+#+NAME: grassHawaii
+#+BEGIN_SRC sh :session :noweb yes :tangle grassHawaii.sh :shebang "#!/bin/bash -v"
+  <<grassCreate( "Hawaii")>>
+  <<rInGdalNlcd( "Hawaii")>>
+  <<grassMapcalc( "Hawaii")>>
+#+END_SRC
+
+#+NAME: grassAlaska
+#+BEGIN_SRC sh :session :noweb yes :tangle grassAlaska.sh :shebang "#!/bin/bash -v"
+  <<grassCreate( "Alaska")>>
+  <<rInGdalNlcd( "Alaska")>>
+  <<grassMapcalc( "Alaska")>>
+#+END_SRC
+
+#+NAME: grasscUSA
+#+BEGIN_SRC sh :session :noweb yes :tangle grasscUSA.sh :shebang "#!/bin/bash -v"
+  <<grassCreate( "cUSA")>>
+  <<rInGdalNlcd( "cUSA")>>
+  <<grassMapcalc( "cUSA")>>
+#+END_SRC
+
+** aggregate the results
