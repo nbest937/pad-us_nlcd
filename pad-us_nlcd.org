@@ -326,6 +326,7 @@ the Makefile.
 #+RESULTS: rInGdalNlcd
 : r.in.gdal input=nlcd2006/pr_landcover_wimperv_10-28-08_se5.img output=nlcd2006
 
+*** TODO add '-N' to r.stats for NLCD/GAP tabulation to eliminate *,*,*,n record created by the mask
 
 #+NAME: grassMapcalc( REGION= "PuertoRico")
 #+BEGIN_SRC sh :session :results output code replace
@@ -376,3 +377,124 @@ the Makefile.
 #+END_SRC
 
 ** aggregate the results
+
+#+NAME: writeFracsProto
+#+begin_src R 
+  library( reshape)
+  library( Hmisc)
+  
+  cells <-
+    read.csv( "gridPuertoRico.csv",
+             col.names= c( "cell", "n"))
+  
+  stats <-
+    read.csv( "statsPuertoRico.csv",
+             na.strings= "*",
+             col.names= c( "cell", "nlcd", "gap", "n"),
+             colClasses= c("numeric", "factor", "factor", "numeric"))
+  ## won't need this when r.stats in previous GRASS step is fixed
+  stats <- stats[ !is.na(stats$cell),]
+  
+  ## stats <- stats[ !is.na(stats$grid),]
+  ## stats <- stats[ stats$cell != "*",]
+  
+  ## stats <- within( stats, gap[ is.na( gap)] <- 0)
+  
+  
+  stats <-
+    within( stats,
+           { levels( gap) <- c( levels( gap), "0")
+             gap[ is.na( gap)] <- "0"
+             gap <- combine_factor( gap, c(0,1,1,1,0))
+             levels( gap) <- c( "no", "yes")
+           })
+  
+  stats <-
+    cast( data= stats,
+         formula= cell ~ gap + nlcd,
+         fun.aggregate= sum,
+         margins= "grand_col",
+         value= "n" )
+  colnames( stats)[ colnames( stats) == "(all)_(all)"] <- "nlcd"
+  
+  merged <-
+    within( merge( stats, cells, by= "cell", all.x= TRUE),
+           no_11 <- no_11 + n - nlcd)
+  
+  fracs <-
+    cast( within( melt( merged,
+                       c( "cell", "n")),
+                 value <- value / n),
+         formula= cell ~ variable,
+         subset= variable != "nlcd",
+         margins= "grand_col",
+         fun.aggregate= sum)
+  
+  write.csv( format.df( fracs,
+                       dec= 3,
+                       numeric.dollar= FALSE,
+                       na.blank= TRUE),
+            row.names= FALSE,
+            file= "fracsPuertoRico.csv",
+            quote= FALSE)
+#+END_SRC
+  
+#+NAME: writeFracs
+#+begin_src R 
+  library( reshape)
+  library( Hmisc)
+
+  writeFracs <- function( region) {
+    cells <-
+      read.csv( sprintf( "grid%s.csv", region),
+               col.names= c( "cell", "n"))
+    stats <-
+      read.csv( sprintf( "stats%s.csv", region),
+               na.strings= "*",
+               col.names= c( "cell", "nlcd", "gap", "n"),
+               colClasses= c("numeric", "factor", "factor", "numeric"))
+    ## won't need this when r.stats in previous GRASS step is fixed
+    stats <- stats[ !is.na(stats$cell),]
+    stats <-
+      within( stats,
+             { levels( gap) <- c( levels( gap), "0")
+               gap[ is.na( gap)] <- "0"
+               gap <- combine_factor( gap, c(0,1,1,1,0))
+               levels( gap) <- c( "no", "yes")
+             })
+    stats <-
+      cast( data= stats,
+           formula= cell ~ gap + nlcd,
+           fun.aggregate= sum,
+           margins= "grand_col",
+           value= "n" )
+    colnames( stats)[ colnames( stats) == "(all)_(all)"] <- "nlcd"
+    merged <-
+      within( merge( stats, cells, by= "cell", all.x= TRUE),
+             no_11 <- no_11 + n - nlcd)
+    fracs <-
+      cast( within( melt( merged,
+                         c( "cell", "n")),
+                   value <- value / n),
+           formula= cell ~ variable,
+           subset= variable != "nlcd",
+           margins= "grand_col",
+           fun.aggregate= sum)
+    fn <- sprintf( "fracs%s.csv", region)
+    write.csv( format.df( fracs,
+                         dec= 3,
+                         numeric.dollar= FALSE,
+                         na.blank= TRUE),
+              row.names= FALSE,
+              file= fn,
+              quote= FALSE)
+    fn
+  }
+  
+  regions <- c( "PuertoRico", "Hawaii", "Alaska", "cUSA")
+  names( regions) <- regions
+  
+  fracFiles <- llply( regions, writeFracs)
+  
+  zip( "pad-us_nlcd.zip", list.files( patt= "^fracs.*?\\csv$"))
+#+end_src
